@@ -1,0 +1,71 @@
+package com.talayeman.gold.worker
+
+import android.content.Context
+import androidx.work.*
+import com.talayeman.gold.data.local.AppDatabase
+import com.talayeman.gold.data.remote.MarketPriceService
+import com.talayeman.gold.data.repository.MarketRepository
+import com.talayeman.gold.data.repository.SettingsRepository
+import com.talayeman.gold.service.NotificationHelper
+import java.util.concurrent.TimeUnit
+
+class PriceUpdateWorker(
+    context: Context,
+    params: WorkerParameters
+) : CoroutineWorker(context, params) {
+
+    override suspend fun doWork(): Result {
+        val db = AppDatabase.getInstance(applicationContext)
+        val marketRepo = MarketRepository(db.marketPriceDao(), MarketPriceService())
+        val settingsRepo = SettingsRepository(db.settingsDao())
+
+        return try {
+            val result = marketRepo.refreshPrices()
+            if (result.isSuccess) {
+                settingsRepo.set(SettingsRepository.KEY_LAST_PRICE_UPDATE, System.currentTimeMillis().toString())
+                // Check alerts
+                NotificationHelper.checkAndNotifyAlerts(applicationContext, db)
+                Result.success()
+            } else {
+                Result.retry()
+            }
+        } catch (e: Exception) {
+            Result.retry()
+        }
+    }
+
+    companion object {
+        const val WORK_NAME = "price_update_periodic"
+
+        fun enqueue(context: Context) {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+
+            val request = PeriodicWorkRequestBuilder<PriceUpdateWorker>(
+                6, TimeUnit.HOURS
+            )
+                .setConstraints(constraints)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.MINUTES)
+                .build()
+
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                WORK_NAME,
+                ExistingPeriodicWorkPolicy.KEEP,
+                request
+            )
+        }
+
+        fun enqueueOneTime(context: Context) {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+
+            val request = OneTimeWorkRequestBuilder<PriceUpdateWorker>()
+                .setConstraints(constraints)
+                .build()
+
+            WorkManager.getInstance(context).enqueue(request)
+        }
+    }
+}
