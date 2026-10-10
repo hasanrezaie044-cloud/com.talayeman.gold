@@ -5,9 +5,13 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    environment: production
 
     steps:
       - name: Checkout
@@ -17,84 +21,101 @@ jobs:
         uses: actions/setup-java@v4
         with:
           java-version: '17'
-          distribution: 'temurin'
+          distribution: temurin
           cache: gradle
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-          # Do NOT install obsolete package "tools" (removed by Google; causes sdkmanager exit 1)
           packages: platform-tools platforms;android-35 build-tools;35.0.0
 
-      - name: Fetch Vazirmatn font (optional, falls back to system font)
+      - name: Fetch Vazirmatn font
         run: bash scripts/fetch-fonts.sh
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
       - name: Check release signing secrets
-        id: check_secrets
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          if [ -z "${{ secrets.KEYSTORE_BASE64 }}" ] || \
-             [ -z "${{ secrets.KEYSTORE_PASSWORD }}" ] || \
-             [ -z "${{ secrets.KEY_ALIAS }}" ] || \
-             [ -z "${{ secrets.KEY_PASSWORD }}" ]; then
-            echo "::error::Release signing secrets are missing."
-            echo "Required repository secrets:"
-            echo "  KEYSTORE_BASE64  - Base64-encoded keystore file"
-            echo "  KEYSTORE_PASSWORD"
-            echo "  KEY_ALIAS"
-            echo "  KEY_PASSWORD"
-            echo "Do NOT generate a fallback keystore. Do NOT use debug signing for release."
+          missing=0
+          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Required signing secret is unavailable: $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "Check the production Environment secrets and their exact names."
             exit 1
           fi
-          echo "Signing secrets present."
+          echo "All required signing secrets are available."
 
       - name: Decode keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > keystore.jks
-          echo "KEYSTORE_PATH=$(pwd)/keystore.jks" >> $GITHUB_ENV
-          echo "KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
-          echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> $GITHUB_ENV
-          echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
+          set -euo pipefail
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > keystore.jks
+          test -s keystore.jks
+          keytool -list \
+            -keystore keystore.jks \
+            -storepass "$KEYSTORE_PASSWORD" >/dev/null
+          {
+            printf 'KEYSTORE_PATH=%s/keystore.jks\n' "$GITHUB_WORKSPACE"
+            printf 'KEYSTORE_PASSWORD=%s\n' "$KEYSTORE_PASSWORD"
+            printf 'KEY_ALIAS=%s\n' "$KEY_ALIAS"
+            printf 'KEY_PASSWORD=%s\n' "$KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+          echo "Keystore decoded and validated."
 
       - name: Build release APK
-        run: |
-          ./gradlew assembleRelease --stacktrace --no-daemon
+        run: ./gradlew assembleRelease --stacktrace --no-daemon
 
       - name: Verify APK exists
-        id: verify
+        env:
+          EXPECTED_APPLICATION_ID: com.talayeman.gold
         run: |
+          set -euo pipefail
           APK_PATH="app/build/outputs/apk/release/app-release.apk"
           if [ ! -f "$APK_PATH" ]; then
-            echo "::error::APK not found at $APK_PATH"
+            echo "::error::Release APK not found: $APK_PATH"
             find app/build/outputs -type f 2>/dev/null || true
             exit 1
           fi
-          SIZE=$(stat -c%s "$APK_PATH")
-          SHA256=$(sha256sum "$APK_PATH" | awk '{print $1}')
-          VERSION_NAME=$(grep versionName app/build.gradle.kts | head -1 | sed 's/.*"\(.*\)".*/\1/')
-          VERSION_CODE=$(grep versionCode app/build.gradle.kts | head -1 | sed 's/[^0-9]*//g')
-          echo "APK_PATH=$APK_PATH" >> $GITHUB_ENV
-          echo "APK_SIZE=$SIZE" >> $GITHUB_ENV
-          echo "APK_SHA256=$SHA256" >> $GITHUB_ENV
-          echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
-          echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_ENV
-          echo "=== Build Info ==="
-          echo "Application ID: com.talayeman.gold"
+          VERSION_NAME=$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -1)
+          VERSION_CODE=$(sed -n 's/^[[:space:]]*versionCode = \([0-9]*\).*/\1/p' app/build.gradle.kts | head -1)
+          echo "Application ID: $EXPECTED_APPLICATION_ID"
           echo "Version name: $VERSION_NAME"
           echo "Version code: $VERSION_CODE"
-          echo "APK path: $APK_PATH"
-          echo "APK size: $SIZE bytes"
-          echo "SHA-256: $SHA256"
+          echo "APK size: $(stat -c%s "$APK_PATH") bytes"
+          sha256sum "$APK_PATH"
+          echo "APK_PATH=$APK_PATH" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+
+      - name: Verify APK signature
+        run: |
+          set -euo pipefail
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose "$APK_PATH"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: gold-management-release-${{ env.VERSION_NAME }}
+          name: talayeman-release-${{ env.VERSION_NAME }}
           path: ${{ env.APK_PATH }}
           if-no-files-found: error
+          retention-days: 30
 
-      - name: Cleanup keystore
+      - name: Cleanup signing files
         if: always()
         run: rm -f keystore.jks
