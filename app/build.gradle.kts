@@ -136,6 +136,9 @@ dependencies {
     // Persian date (Jalali)
     implementation("com.github.samanzamani:PersianDate:1.7.1")
 
+    // Required annotations referenced by Google Tink during R8 minification
+    implementation("com.google.errorprone:error_prone_annotations:2.36.0")
+
     // Security / Encrypted prefs fallback
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
