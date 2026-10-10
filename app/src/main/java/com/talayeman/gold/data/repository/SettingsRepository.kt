@@ -20,6 +20,15 @@ class SettingsRepository(private val settingsDao: SettingsDao) {
         const val KEY_SHOW_FINANCE_IN_NOTIF = "show_finance_in_notif"
         const val KEY_AUTO_UPDATE = "auto_price_update"
         const val KEY_LAST_PRICE_UPDATE = "last_price_update"
+
+        // Advanced notifications (all default to ON)
+        const val KEY_NOTIF_PRICE_UPDATE = "notif_price_update"
+        const val KEY_NOTIF_PROFIT = "notif_profit"
+        const val KEY_NOTIF_LOSS = "notif_loss"
+
+        // Last portfolio state we notified about (used to avoid spamming)
+        const val KEY_LAST_PL_STATE = "last_pl_state"   // PROFIT | LOSS
+        const val KEY_LAST_PL_PERCENT = "last_pl_percent"
     }
 
     fun getThemeMode(): Flow<ThemeMode> =
@@ -71,6 +80,27 @@ class SettingsRepository(private val settingsDao: SettingsDao) {
     suspend fun setShowFinanceInNotif(show: Boolean) {
         settingsDao.upsert(AppSettingsEntity(KEY_SHOW_FINANCE_IN_NOTIF, show.toString()))
     }
+
+    /** Boolean setting that is ON unless explicitly stored as "false". */
+    fun boolFlow(key: String, defaultValue: Boolean = true): Flow<Boolean> =
+        settingsDao.getFlow(key).map { entity ->
+            when (entity?.value) {
+                "true" -> true
+                "false" -> false
+                else -> defaultValue
+            }
+        }
+
+    suspend fun setBool(key: String, value: Boolean) {
+        settingsDao.upsert(AppSettingsEntity(key, value.toString()))
+    }
+
+    suspend fun getBool(key: String, defaultValue: Boolean = true): Boolean =
+        when (settingsDao.get(key)?.value) {
+            "true" -> true
+            "false" -> false
+            else -> defaultValue
+        }
 
     suspend fun get(key: String): String? = settingsDao.get(key)?.value
 

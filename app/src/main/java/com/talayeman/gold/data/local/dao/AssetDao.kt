@@ -39,15 +39,15 @@ interface AssetDao {
     @Query("DELETE FROM assets WHERE id = :id")
     suspend fun deleteById(id: Long)
 
-    @Query("SELECT COUNT(*) FROM assets")
+    @Query("SELECT COUNT(*) FROM assets WHERE status = 'ACTIVE'")
     suspend fun getCount(): Int
 
-    @Query("SELECT COUNT(*) FROM assets WHERE isCoin = 1")
+    @Query("SELECT COUNT(*) FROM assets WHERE isCoin = 1 AND status = 'ACTIVE'")
     suspend fun getCoinCount(): Int
 
-    @Query("SELECT SUM(weightMg * quantity) FROM assets WHERE isCoin = 0")
+    @Query("SELECT SUM(weightMg * quantity) FROM assets WHERE isCoin = 0 AND status = 'ACTIVE'")
     suspend fun getTotalGoldWeightMg(): Long?
 
-    @Query("SELECT SUM(CAST(totalPurchaseCost AS REAL)) FROM assets")
+    @Query("SELECT SUM(CAST(totalPurchaseCost AS REAL)) FROM assets WHERE status = 'ACTIVE'")
     suspend fun getTotalPurchaseCost(): Double?
 }

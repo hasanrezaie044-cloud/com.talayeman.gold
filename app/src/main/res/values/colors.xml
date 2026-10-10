@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#C9A227</color>
-    <color name="ic_launcher_foreground">#FFFFFF</color>
+    <!-- Adaptive icon background: matches the dark brown/black of the app icon artwork -->
+    <color name="ic_launcher_background">#1E160B</color>
+    <color name="window_background">#F6F7FB</color>
 </resources>

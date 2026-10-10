@@ -12,6 +12,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.SaveAlt
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -35,7 +37,10 @@ fun AttachmentThumbnail(
     model: Any,
     contentDescription: String?,
     onClick: (() -> Unit)? = null,
-    onRemove: (() -> Unit)? = null
+    onRemove: (() -> Unit)? = null,
+    /** If set, a small optional "save to gallery" button is shown on the thumbnail. */
+    onSaveToGallery: (() -> Unit)? = null,
+    savedToGallery: Boolean = false
 ) {
     val errorPainter: Painter = rememberVectorPainter(Icons.Default.BrokenImage)
     Box(
@@ -52,6 +57,25 @@ fun AttachmentThumbnail(
             error = errorPainter,
             modifier = Modifier.fillMaxSize()
         )
+        if (onSaveToGallery != null) {
+            Surface(
+                shape = CircleShape,
+                color = Color.Black.copy(alpha = 0.55f),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(4.dp)
+                    .size(28.dp)
+            ) {
+                IconButton(onClick = onSaveToGallery, enabled = !savedToGallery, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        if (savedToGallery) Icons.Default.CheckCircle else Icons.Default.SaveAlt,
+                        contentDescription = "ذخیره در گالری",
+                        tint = if (savedToGallery) Color(0xFF7BE0A0) else Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+        }
         if (onRemove != null) {
             Surface(
                 shape = CircleShape,
@@ -76,7 +100,12 @@ fun AttachmentThumbnail(
 
 /** Full-screen preview of an attached image. */
 @Composable
-fun ImagePreviewDialog(model: Any, onDismiss: () -> Unit) {
+fun ImagePreviewDialog(
+    model: Any,
+    onDismiss: () -> Unit,
+    /** If set, shows an optional "save to gallery" button. */
+    onSaveToGallery: (() -> Unit)? = null
+) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(
             Modifier
@@ -92,6 +121,16 @@ fun ImagePreviewDialog(model: Any, onDismiss: () -> Unit) {
             )
             IconButton(onClick = onDismiss, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)) {
                 Icon(Icons.Default.Close, contentDescription = "بستن", tint = Color.White)
+            }
+            if (onSaveToGallery != null) {
+                androidx.compose.material3.FilledTonalButton(
+                    onClick = onSaveToGallery,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp)
+                ) {
+                    Icon(Icons.Default.SaveAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                    androidx.compose.foundation.layout.Spacer(Modifier.size(8.dp))
+                    androidx.compose.material3.Text("ذخیره در گالری")
+                }
             }
         }
     }

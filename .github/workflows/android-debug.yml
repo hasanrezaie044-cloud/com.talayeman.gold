@@ -26,6 +26,9 @@ jobs:
         with:
           packages: platform-tools platforms;android-35 build-tools;35.0.0
 
+      - name: Fetch Vazirmatn font (optional, falls back to system font)
+        run: bash scripts/fetch-fonts.sh
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 

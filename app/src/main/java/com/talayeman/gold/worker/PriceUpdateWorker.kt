@@ -7,6 +7,7 @@ import com.talayeman.gold.data.remote.MarketPriceService
 import com.talayeman.gold.data.repository.MarketRepository
 import com.talayeman.gold.data.repository.SettingsRepository
 import com.talayeman.gold.service.NotificationHelper
+import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
 
 class PriceUpdateWorker(
@@ -20,10 +21,13 @@ class PriceUpdateWorker(
         val settingsRepo = SettingsRepository(db.settingsDao())
 
         return try {
+            // Remember the previous prices so the notification can tell whether anything changed.
+            val previous = marketRepo.getAllPrices().first().associateBy { it.priceType }
             val result = marketRepo.refreshPrices()
             if (result.isSuccess) {
                 settingsRepo.set(SettingsRepository.KEY_LAST_PRICE_UPDATE, System.currentTimeMillis().toString())
-                // Check alerts
+                // Price-update / profit / loss notifications (each can be disabled in Settings)
+                runCatching { NotificationHelper.handlePriceUpdate(applicationContext, db, previous) }
                 NotificationHelper.checkAndNotifyAlerts(applicationContext, db)
                 Result.success()
             } else {
@@ -35,15 +39,20 @@ class PriceUpdateWorker(
     }
 
     companion object {
-        const val WORK_NAME = "price_update_periodic"
+        // v2: the refresh interval changed from 6 h to 3 h; a new unique name makes WorkManager
+        // pick up the new period (KEEP would silently retain the old 6 h schedule).
+        const val WORK_NAME = "price_update_periodic_v2"
+        private const val OLD_WORK_NAME = "price_update_periodic"
+        const val INTERVAL_HOURS = 3L
 
         fun enqueue(context: Context) {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
 
+            WorkManager.getInstance(context).cancelUniqueWork(OLD_WORK_NAME)
             val request = PeriodicWorkRequestBuilder<PriceUpdateWorker>(
-                6, TimeUnit.HOURS
+                INTERVAL_HOURS, TimeUnit.HOURS
             )
                 .setConstraints(constraints)
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.MINUTES)

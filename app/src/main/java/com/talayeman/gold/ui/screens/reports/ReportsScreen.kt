@@ -25,7 +25,7 @@ fun ReportsScreen(
     viewModel: AppViewModel = viewModel()
 ) {
     val portfolio by viewModel.portfolio.collectAsState()
-    val assets by viewModel.assets.collectAsState()
+    val assets by viewModel.activeAssets.collectAsState()
     val currency by viewModel.currency.collectAsState()
 
     val goldCount = assets.count { !it.isCoin }

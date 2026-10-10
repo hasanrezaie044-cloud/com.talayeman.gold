@@ -1,10 +1,10 @@
 package com.talayeman.gold
 
-import androidx.compose.ui.unit.dp
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -13,17 +13,20 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.talayeman.gold.service.NotificationHelper
 import com.talayeman.gold.ui.AppViewModel
+import com.talayeman.gold.ui.auth.LockScreen
 import com.talayeman.gold.ui.navigation.GoldNavGraph
 import com.talayeman.gold.ui.navigation.bottomNavItems
 import com.talayeman.gold.ui.theme.GoldTheme
-import com.talayeman.gold.util.BiometricHelper
 import com.talayeman.gold.util.PinManager
 import com.talayeman.gold.worker.DailyPriceNotificationWorker
 import com.talayeman.gold.worker.PriceUpdateWorker
@@ -32,12 +35,21 @@ class MainActivity : FragmentActivity() {
 
     private val viewModel: AppViewModel by viewModels()
 
+    /**
+     * True while the app must show the login screen. Decided synchronously from the secure store
+     * (NOT from an async settings flow), so protected content is never composed before login.
+     */
+    private var locked by mutableStateOf(false)
+    private var stoppedAtElapsed = 0L
+
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { /* handled */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        locked = PinManager.get(this).hasPin()
 
         NotificationHelper.createChannels(this)
         PriceUpdateWorker.enqueue(this)
@@ -53,15 +65,16 @@ class MainActivity : FragmentActivity() {
 
         setContent {
             val themeMode by viewModel.themeMode.collectAsState()
-            val biometricEnabled by viewModel.biometricEnabled.collectAsState()
-            var unlocked by remember { mutableStateOf(!biometricEnabled) }
 
             GoldTheme(themeMode = themeMode) {
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                    if (!unlocked && biometricEnabled) {
-                        BiometricLockScreen(
-                            onUnlocked = { unlocked = true },
-                            activity = this@MainActivity
+                    if (locked) {
+                        LockScreen(
+                            activity = this@MainActivity,
+                            onUnlocked = {
+                                stoppedAtElapsed = 0L
+                                locked = false
+                            }
                         )
                     } else {
                         MainScaffold(viewModel)
@@ -70,88 +83,25 @@ class MainActivity : FragmentActivity() {
             }
         }
     }
-}
 
-@Composable
-private fun BiometricLockScreen(
-    onUnlocked: () -> Unit,
-    activity: FragmentActivity
-) {
-    val pinManager = remember { PinManager(activity) }
-    var pinInput by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-    var usePin by remember { mutableStateOf(!BiometricHelper.canAuthenticate(activity) || !pinManager.hasPin()) }
+    override fun onStop() {
+        super.onStop()
+        stoppedAtElapsed = SystemClock.elapsedRealtime()
+    }
 
-    LaunchedEffect(Unit) {
-        if (BiometricHelper.canAuthenticate(activity) && pinManager.hasPin()) {
-            BiometricHelper.authenticate(
-                activity = activity,
-                title = "ورود به طلای من",
-                subtitle = "با اثر انگشت تأیید کنید یا از PIN استفاده کنید",
-                onSuccess = onUnlocked,
-                onError = { usePin = true },
-                onFailed = { usePin = true }
-            )
-        } else if (!pinManager.hasPin()) {
-            // No PIN and no biometric configured properly — unlock
-            onUnlocked()
-        } else {
-            usePin = true
+    override fun onStart() {
+        super.onStart()
+        // Re-lock when the app was in the background for more than 30 seconds.
+        if (stoppedAtElapsed != 0L &&
+            SystemClock.elapsedRealtime() - stoppedAtElapsed > RELOCK_AFTER_MS &&
+            PinManager.get(this).hasPin()
+        ) {
+            locked = true
         }
     }
 
-    Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
-        if (usePin && pinManager.hasPin()) {
-            Column(
-                Modifier
-                    .fillMaxSize()
-                    .padding(32.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
-            ) {
-                Text("کد PIN چهار رقمی", style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.height(16.dp))
-                OutlinedTextField(
-                    value = pinInput,
-                    onValueChange = {
-                        if (it.length <= 4 && it.all { c -> c.isDigit() }) {
-                            pinInput = it
-                            error = null
-                        }
-                    },
-                    label = { Text("PIN") },
-                    singleLine = true,
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword
-                    )
-                )
-                if (error != null) {
-                    Text(error!!, color = MaterialTheme.colorScheme.error)
-                }
-                Spacer(Modifier.height(16.dp))
-                Button(onClick = {
-                    if (pinManager.verifyPin(pinInput)) onUnlocked()
-                    else {
-                        error = "PIN نادرست است"
-                        pinInput = ""
-                    }
-                }) {
-                    Text("ورود")
-                }
-                if (BiometricHelper.canAuthenticate(activity)) {
-                    TextButton(onClick = {
-                        BiometricHelper.authenticate(
-                            activity = activity,
-                            onSuccess = onUnlocked,
-                            onError = {},
-                            onFailed = {}
-                        )
-                    }) {
-                        Text("استفاده از اثر انگشت")
-                    }
-                }
-            }
-        }
+    private companion object {
+        const val RELOCK_AFTER_MS = 30_000L
     }
 }
 
@@ -167,7 +117,10 @@ private fun MainScaffold(viewModel: AppViewModel) {
     Scaffold(
         bottomBar = {
             if (showBottomBar) {
-                NavigationBar {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    tonalElevation = 0.dp
+                ) {
                     bottomNavItems.forEach { screen ->
                         val selected = currentRoute == screen.route
                         NavigationBarItem(
@@ -189,14 +142,27 @@ private fun MainScaffold(viewModel: AppViewModel) {
                                     contentDescription = screen.title
                                 )
                             },
-                            label = null
+                            label = {
+                                Text(
+                                    screen.title,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
+                            alwaysShowLabel = true,
+                            colors = NavigationBarItemDefaults.colors(
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                selectedTextColor = MaterialTheme.colorScheme.primary
+                            )
                         )
                     }
                 }
             }
         }
     ) { padding ->
-        androidx.compose.foundation.layout.Box(Modifier.padding(padding)) {
+        Box(Modifier.padding(padding)) {
             GoldNavGraph(navController)
         }
     }

@@ -14,6 +14,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -28,6 +29,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.talayeman.gold.domain.model.Asset
 import com.talayeman.gold.domain.model.AssetType
+import com.talayeman.gold.domain.model.AssetStatus
 import com.talayeman.gold.domain.model.Attachment
 import com.talayeman.gold.domain.model.AttachmentType
 import com.talayeman.gold.domain.model.WeightUnit
@@ -35,6 +37,12 @@ import com.talayeman.gold.domain.usecase.PortfolioCalculator
 import com.talayeman.gold.ui.AppViewModel
 import com.talayeman.gold.ui.components.AttachmentThumbnail
 import com.talayeman.gold.ui.components.ImagePreviewDialog
+import com.talayeman.gold.ui.components.JalaliDateField
+import com.talayeman.gold.ui.components.AppCard
+import com.talayeman.gold.util.GallerySaver
+import com.talayeman.gold.util.JalaliCalendar
+import androidx.core.content.ContextCompat
+import kotlinx.coroutines.launch
 import com.talayeman.gold.ui.components.MoneyTextField
 import com.talayeman.gold.util.AttachmentStorage
 import com.talayeman.gold.util.MoneyInputFormatter
@@ -44,7 +52,7 @@ import kotlinx.coroutines.flow.flowOf
 import java.math.BigDecimal
 
 /** An image picked/captured in this form that is not yet saved to app storage. */
-private data class PendingImage(val uri: Uri, val type: AttachmentType)
+private data class PendingImage(val uri: Uri, val type: AttachmentType, val fromCamera: Boolean = false)
 
 private const val MAX_PICK = 10
 
@@ -85,9 +93,12 @@ fun AssetEditScreen(
 
     val isEdit = assetId != null && assetId > 0
 
-    // Preserve original dates when editing (previously they were reset on every edit).
-    var originalPurchaseDate by remember { mutableStateOf<Long?>(null) }
+    // Preserve the registration date when editing; the purchase date is chosen in the Jalali picker.
+    var purchaseDate by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var originalCreatedAt by remember { mutableStateOf<Long?>(null) }
+    // The loaded asset: sold / gifted status must survive an edit.
+    var originalAsset by remember { mutableStateOf<Asset?>(null) }
+    val registeredAtPreview = remember { System.currentTimeMillis() }
 
     // Automatic price: on for new assets; off when editing so a saved price is never overwritten.
     var priceAuto by remember { mutableStateOf(!isEdit) }
@@ -121,10 +132,45 @@ fun AssetEditScreen(
     ) { success ->
         val uri = cameraUri
         if (uri != null) {
-            if (success) pendingImages.add(PendingImage(uri, cameraTarget))
+            if (success) pendingImages.add(PendingImage(uri, cameraTarget, fromCamera = true))
             else AttachmentStorage.deleteCameraTemp(context, uri)
         }
         cameraUri = null
+    }
+
+    // ---- Optional "save to device gallery" (never automatic) ----
+    val scope = rememberCoroutineScope()
+    val gallerySaved = remember { mutableStateListOf<Uri>() }
+    var pendingSaveModel by remember { mutableStateOf<Any?>(null) }
+    fun doSaveToGallery(model: Any) {
+        scope.launch {
+            val ok = GallerySaver.save(context, model)
+            if (ok && model is Uri) gallerySaved.add(model)
+            android.widget.Toast.makeText(
+                context,
+                if (ok) "عکس در گالری ذخیره شد" else "ذخیره در گالری ناموفق بود",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+    val storagePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val model = pendingSaveModel
+        pendingSaveModel = null
+        if (granted && model != null) doSaveToGallery(model)
+        else android.widget.Toast.makeText(context, "برای ذخیره در گالری، اجازه‌ی دسترسی لازم است", android.widget.Toast.LENGTH_SHORT).show()
+    }
+    fun saveToGallery(model: Any) {
+        if (GallerySaver.needsLegacyPermission &&
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            pendingSaveModel = model
+            storagePermissionLauncher.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        } else {
+            doSaveToGallery(model)
+        }
     }
 
     fun openGallery(target: AttachmentType) {
@@ -176,8 +222,9 @@ fun AssetEditScreen(
                 tax = MoneyUtils.toInputString(asset.tax)
                 otherFees = MoneyUtils.toInputString(asset.otherFees)
                 notes = asset.notes ?: ""
-                originalPurchaseDate = asset.purchaseDate
+                purchaseDate = asset.purchaseDate
                 originalCreatedAt = asset.createdAt
+                originalAsset = asset
             }
         }
     }
@@ -229,6 +276,37 @@ fun AssetEditScreen(
                 label = { Text("نام") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
+            )
+
+            // Which Persian date this asset is recorded on (read-only) ...
+            AppCard(Modifier.fillMaxWidth()) {
+                Row(
+                    Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(Icons.Default.CalendarMonth, null, tint = MaterialTheme.colorScheme.primary)
+                    Column {
+                        Text(
+                            if (isEdit) "تاریخ ثبت در برنامه" else "تاریخ ثبت (امروز)",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        val reg = originalCreatedAt ?: registeredAtPreview
+                        Text(
+                            JalaliCalendar.formatFull(reg) + " — " + JalaliCalendar.formatTime(reg),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+            // ... and the purchase date, chosen with the Persian calendar.
+            JalaliDateField(
+                label = "تاریخ خرید",
+                millis = purchaseDate,
+                onChange = { purchaseDate = it },
+                modifier = Modifier.fillMaxWidth()
             )
 
             ExposedDropdownMenuBox(expanded = typeExpanded, onExpandedChange = { typeExpanded = it }) {
@@ -435,7 +513,9 @@ fun AssetEditScreen(
                     pendingImages.remove(it)
                     AttachmentStorage.deleteCameraTemp(context, it.uri)
                 },
-                onPreview = { previewModel = it }
+                onPreview = { previewModel = it },
+                onSaveToGallery = { saveToGallery(it.uri) },
+                gallerySaved = gallerySaved
             )
             AttachmentTypeSection(
                 title = "تصویر فاکتور",
@@ -451,7 +531,9 @@ fun AssetEditScreen(
                     pendingImages.remove(it)
                     AttachmentStorage.deleteCameraTemp(context, it.uri)
                 },
-                onPreview = { previewModel = it }
+                onPreview = { previewModel = it },
+                onSaveToGallery = { saveToGallery(it.uri) },
+                gallerySaved = gallerySaved
             )
 
             if (error != null) {
@@ -482,7 +564,7 @@ fun AssetEditScreen(
                         weightMg = weightMg,
                         purity = pure,
                         purchasePrice = price,
-                        purchaseDate = originalPurchaseDate ?: now,
+                        purchaseDate = purchaseDate,
                         seller = seller.ifBlank { null },
                         makingCharge = mc,
                         tax = tx,
@@ -491,7 +573,11 @@ fun AssetEditScreen(
                         notes = notes.ifBlank { null },
                         isCoin = type.isCoin,
                         coinType = if (type.isCoin) type.name else null,
-                        createdAt = originalCreatedAt ?: now
+                        createdAt = originalCreatedAt ?: now,
+                        status = originalAsset?.status ?: AssetStatus.ACTIVE,
+                        statusDate = originalAsset?.statusDate,
+                        soldPrice = originalAsset?.soldPrice,
+                        statusNote = originalAsset?.statusNote
                     )
                     isSaving = true
                     error = null
@@ -512,7 +598,8 @@ fun AssetEditScreen(
                         navController.popBackStack()
                     }
                 },
-                modifier = Modifier.fillMaxWidth()
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth().height(52.dp)
             ) {
                 if (isSaving) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -526,7 +613,14 @@ fun AssetEditScreen(
     }
 
     previewModel?.let { model ->
-        ImagePreviewDialog(model = model, onDismiss = { previewModel = null })
+        // Offer saving only for camera shots and already-stored images (not for images the user
+        // just picked from the gallery, which are already there).
+        val canSave = model !is Uri || pendingImages.any { it.uri == model && it.fromCamera }
+        ImagePreviewDialog(
+            model = model,
+            onDismiss = { previewModel = null },
+            onSaveToGallery = if (canSave) ({ saveToGallery(model) }) else null
+        )
     }
 }
 
@@ -577,10 +671,12 @@ private fun AttachmentTypeSection(
     onGallery: () -> Unit,
     onRemoveExisting: (Attachment) -> Unit,
     onRemovePending: (PendingImage) -> Unit,
-    onPreview: (Any) -> Unit
+    onPreview: (Any) -> Unit,
+    onSaveToGallery: (PendingImage) -> Unit,
+    gallerySaved: List<Uri>
 ) {
     val context = LocalContext.current
-    Card(Modifier.fillMaxWidth()) {
+    AppCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(title, fontWeight = FontWeight.Bold)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -622,7 +718,10 @@ private fun AttachmentTypeSection(
                             model = p.uri,
                             contentDescription = type.name,
                             onClick = { onPreview(p.uri) },
-                            onRemove = { onRemovePending(p) }
+                            onRemove = { onRemovePending(p) },
+                            // Optional: only photos taken with the camera get a save-to-gallery button
+                            onSaveToGallery = if (p.fromCamera) ({ onSaveToGallery(p) }) else null,
+                            savedToGallery = p.uri in gallerySaved
                         )
                     }
                 }

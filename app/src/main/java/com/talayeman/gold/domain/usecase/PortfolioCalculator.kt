@@ -11,6 +11,8 @@ class PortfolioCalculator {
         assets: List<Asset>,
         prices: Map<PriceType, MarketPrice>
     ): PortfolioSummary {
+        // Sold / gifted assets are no longer part of the portfolio or the user's capital.
+        val assets = assets.filter { it.status == AssetStatus.ACTIVE }
         if (assets.isEmpty()) return PortfolioSummary()
 
         var totalPurchase = BigDecimal.ZERO

@@ -81,9 +81,8 @@ fun MarketScreen(
                         Column {
                             Text(type.persianName, fontWeight = FontWeight.Bold)
                             if (price != null) {
-                                val sdf = SimpleDateFormat("HH:mm", Locale("fa"))
                                 Text(
-                                    "به‌روزرسانی: ${sdf.format(Date(price.updatedAt))}" +
+                                    "به‌روزرسانی: ${com.talayeman.gold.util.JalaliCalendar.formatDateTime(price.updatedAt)}" +
                                             if (price.isCached) " (ذخیره‌شده)" else "",
                                     style = MaterialTheme.typography.labelSmall
                                 )

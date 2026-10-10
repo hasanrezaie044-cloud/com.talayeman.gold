@@ -25,7 +25,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val settingsRepo = SettingsRepository(db.settingsDao())
     private val portfolioCalculator = PortfolioCalculator()
 
+    /** Every asset, including sold / gifted ones (history). */
     val assets: StateFlow<List<Asset>> = assetRepo.getAllAssets()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Assets that are still owned. Only these count toward the portfolio / capital. */
+    val activeAssets: StateFlow<List<Asset>> = assets
+        .map { list -> list.filter { it.status == AssetStatus.ACTIVE } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** Sold / gifted assets, newest status change first. */
+    val historyAssets: StateFlow<List<Asset>> = assets
+        .map { list ->
+            list.filter { it.status != AssetStatus.ACTIVE }
+                .sortedByDescending { it.statusDate ?: it.updatedAt }
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val prices: StateFlow<List<MarketPrice>> = marketRepo.getAllPrices()
@@ -45,8 +59,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val currency: StateFlow<Currency> = settingsRepo.getCurrency()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Currency.TOMAN)
 
-    val biometricEnabled: StateFlow<Boolean> = settingsRepo.isBiometricEnabled()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val notifPriceUpdate: StateFlow<Boolean> = settingsRepo.boolFlow(SettingsRepository.KEY_NOTIF_PRICE_UPDATE)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+    val notifProfit: StateFlow<Boolean> = settingsRepo.boolFlow(SettingsRepository.KEY_NOTIF_PROFIT)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+    val notifLoss: StateFlow<Boolean> = settingsRepo.boolFlow(SettingsRepository.KEY_NOTIF_LOSS)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+    val notifDaily: StateFlow<Boolean> = settingsRepo.isDailyPriceNotifEnabled()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+    val notifShowFinance: StateFlow<Boolean> = settingsRepo.showFinanceInNotif()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
@@ -78,8 +100,32 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { settingsRepo.setCurrency(c) }
     }
 
-    fun setBiometric(enabled: Boolean) {
-        viewModelScope.launch { settingsRepo.setBiometricEnabled(enabled) }
+    fun setNotifSetting(key: String, value: Boolean) {
+        viewModelScope.launch { settingsRepo.setBool(key, value) }
+    }
+
+    /** Marks an asset as sold / gifted. It leaves the portfolio, but stays visible in the history. */
+    fun markAssetStatus(
+        asset: Asset,
+        status: AssetStatus,
+        date: Long,
+        soldPrice: java.math.BigDecimal?,
+        note: String?
+    ) {
+        viewModelScope.launch {
+            assetRepo.updateAsset(
+                asset.copy(
+                    status = status,
+                    statusDate = if (status == AssetStatus.ACTIVE) null else date,
+                    soldPrice = if (status == AssetStatus.SOLD) soldPrice else null,
+                    statusNote = if (status == AssetStatus.ACTIVE) null else note?.ifBlank { null }
+                )
+            )
+        }
+    }
+
+    fun restoreAssetToActive(asset: Asset) {
+        markAssetStatus(asset, AssetStatus.ACTIVE, 0L, null, null)
     }
 
     fun deleteAsset(id: Long) {

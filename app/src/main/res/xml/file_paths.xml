@@ -2,4 +2,6 @@
 <paths>
     <!-- Temporary camera captures only; final images are copied to filesDir/photos|attachments -->
     <cache-path name="camera" path="camera/" />
+    <!-- Temporary backup .zip handed to Google Drive / the share sheet -->
+    <cache-path name="backups" path="backups/" />
 </paths>

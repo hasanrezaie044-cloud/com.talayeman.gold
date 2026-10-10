@@ -31,5 +31,10 @@ data class AssetEntity(
     val isCoin: Boolean = false,
     val coinType: String? = null, // Emami, BaharAzadi, etc.
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    // --- added in DB version 2 ---
+    val status: String = "ACTIVE", // AssetStatus enum name
+    val statusDate: Long? = null,
+    val soldPrice: String? = null, // BigDecimal as string
+    val statusNote: String? = null
 )

@@ -22,8 +22,9 @@ class BackupManager(private val context: Context) {
     suspend fun createBackup(outputFile: File): Result<File> = withContext(Dispatchers.IO) {
         try {
             val db = AppDatabase.getInstance(context)
-            // Close DB to allow file copy
-            db.close()
+            // Flush the write-ahead log into the main DB file so the copy below is complete and
+            // consistent. (The database stays open: closing it while the UI observes it is unsafe.)
+            db.openHelper.writableDatabase.query("PRAGMA wal_checkpoint(FULL)").use { it.moveToFirst() }
 
             val dbFile = context.getDatabasePath(AppDatabase.DB_NAME)
             val attachmentsDir = File(context.filesDir, "attachments")
@@ -49,7 +50,7 @@ class BackupManager(private val context: Context) {
                 }
                 // Metadata
                 val meta = JSONObject().apply {
-                    put("version", 1)
+                    put("version", 2) // DB schema version contained in this backup
                     put("appId", "com.talayeman.gold")
                     put("createdAt", System.currentTimeMillis())
                 }
@@ -58,11 +59,8 @@ class BackupManager(private val context: Context) {
                 zip.closeEntry()
             }
 
-            // Re-open DB
-            AppDatabase.getInstance(context)
             Result.success(outputFile)
         } catch (e: Exception) {
-            AppDatabase.getInstance(context)
             Result.failure(e)
         }
     }
@@ -82,6 +80,10 @@ class BackupManager(private val context: Context) {
                 var entry = zip.nextEntry
                 while (entry != null) {
                     val outFile = File(tempDir, entry.name)
+                    // Zip-slip protection: never write outside the temp directory.
+                    if (!outFile.canonicalPath.startsWith(tempDir.canonicalPath + File.separator)) {
+                        throw SecurityException("فایل پشتیبان نامعتبر است")
+                    }
                     outFile.parentFile?.mkdirs()
                     if (!entry.isDirectory) {
                         FileOutputStream(outFile).use { zip.copyTo(it) }
@@ -102,10 +104,14 @@ class BackupManager(private val context: Context) {
 
             // Restore DB
             val restoredDb = File(tempDir, "database/${AppDatabase.DB_NAME}")
-            if (restoredDb.exists()) {
-                dbFile.parentFile?.mkdirs()
-                restoredDb.copyTo(dbFile, overwrite = true)
+            if (!restoredDb.exists()) {
+                throw IllegalArgumentException("پایگاه داده‌ای در فایل پشتیبان یافت نشد")
             }
+            dbFile.parentFile?.mkdirs()
+            // Stale WAL / SHM files of the old database must not be applied to the restored one.
+            File(dbFile.path + "-wal").delete()
+            File(dbFile.path + "-shm").delete()
+            restoredDb.copyTo(dbFile, overwrite = true)
 
             // Restore files
             val filesDir = File(tempDir, "files")

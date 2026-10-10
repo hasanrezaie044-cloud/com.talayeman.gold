@@ -1,6 +1,8 @@
 package com.talayeman.gold.ui.screens.calculator
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -11,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.talayeman.gold.domain.model.PriceType
@@ -44,9 +47,46 @@ fun CalculatorScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            TabRow(selectedTabIndex = tab) {
-                tabs.forEachIndexed { i, title ->
-                    Tab(selected = tab == i, onClick = { tab = i }, text = { Text(title) })
+            // The four calculator modes: grouped inside one bordered, rounded frame.
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.65f))
+            ) {
+                Row(
+                    Modifier.padding(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    tabs.forEachIndexed { i, title ->
+                        val selected = tab == i
+                        val buttonShape = RoundedCornerShape(12.dp)
+                        val padding = PaddingValues(horizontal = 2.dp, vertical = 10.dp)
+                        if (selected) {
+                            Button(
+                                onClick = { tab = i },
+                                modifier = Modifier.weight(1f),
+                                shape = buttonShape,
+                                contentPadding = padding
+                            ) {
+                                Text(title, fontSize = 12.sp, maxLines = 1, softWrap = false, fontWeight = FontWeight.Bold)
+                            }
+                        } else {
+                            FilledTonalButton(
+                                onClick = { tab = i },
+                                modifier = Modifier.weight(1f),
+                                shape = buttonShape,
+                                contentPadding = padding,
+                                colors = ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainer
+                                )
+                            ) {
+                                Text(title, fontSize = 12.sp, maxLines = 1, softWrap = false)
+                            }
+                        }
+                    }
                 }
             }
 

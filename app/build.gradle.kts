@@ -13,8 +13,8 @@ android {
         applicationId = "com.talayeman.gold"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -76,8 +76,12 @@ android {
     }
 }
 
+ksp {
+    // Exported Room schemas (app/schemas) document every DB version for migration testing.
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
-    implementation("com.google.errorprone:error_prone_annotations:2.36.0")
     // Core
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")

@@ -2,6 +2,18 @@ package com.talayeman.gold.domain.model
 
 import java.math.BigDecimal
 
+/** Lifecycle of an asset. Only ACTIVE assets count toward the portfolio / capital. */
+enum class AssetStatus(val persianName: String) {
+    ACTIVE("فعال"),
+    SOLD("فروخته‌شده"),
+    GIFTED("هدیه داده‌شده");
+
+    companion object {
+        fun fromString(value: String?): AssetStatus =
+            entries.firstOrNull { it.name == value } ?: ACTIVE
+    }
+}
+
 data class Asset(
     val id: Long = 0,
     val name: String,
@@ -21,6 +33,13 @@ data class Asset(
     val coinType: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
+    val status: AssetStatus = AssetStatus.ACTIVE,
+    /** When the asset was sold / gifted (epoch millis). */
+    val statusDate: Long? = null,
+    /** Sale price (SOLD only, optional). */
+    val soldPrice: BigDecimal? = null,
+    /** Free text: buyer / recipient / reason. */
+    val statusNote: String? = null,
     val photos: List<Attachment> = emptyList(),
     val invoices: List<Attachment> = emptyList()
 )
@@ -37,6 +56,8 @@ data class Attachment(
 )
 
 enum class AttachmentType { PHOTO, INVOICE }
+
+val Asset.isActive: Boolean get() = status == AssetStatus.ACTIVE
 
 data class MarketPrice(
     val priceType: PriceType,

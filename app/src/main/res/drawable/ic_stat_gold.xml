@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Stacked gold bars silhouette (status-bar icon: white only) -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M9,5 L15,5 L17,10 L7,10 Z M4,12 L10.5,12 L11.5,17 L2.5,17 Z M13.5,12 L20,12 L21.5,17 L12.5,17 Z"/>
+</vector>

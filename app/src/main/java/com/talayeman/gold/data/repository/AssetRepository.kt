@@ -82,7 +82,11 @@ class AssetRepository(
         isCoin = isCoin,
         coinType = coinType,
         createdAt = createdAt,
-        updatedAt = updatedAt
+        updatedAt = updatedAt,
+        status = AssetStatus.fromString(status),
+        statusDate = statusDate,
+        soldPrice = soldPrice?.let { MoneyUtils.parse(it) },
+        statusNote = statusNote
     )
 
     private fun Asset.toEntity() = AssetEntity(
@@ -103,7 +107,11 @@ class AssetRepository(
         isCoin = isCoin,
         coinType = coinType,
         createdAt = createdAt,
-        updatedAt = System.currentTimeMillis()
+        updatedAt = System.currentTimeMillis(),
+        status = status.name,
+        statusDate = statusDate,
+        soldPrice = soldPrice?.toPlainString(),
+        statusNote = statusNote
     )
 
     private fun AttachmentEntity.toDomain() = Attachment(

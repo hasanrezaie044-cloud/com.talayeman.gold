@@ -60,8 +60,10 @@ fun InvoicesScreen(
                             Spacer(Modifier.width(12.dp))
                             Column {
                                 Text(inv.fileName, fontWeight = FontWeight.Medium)
-                                val sdf = SimpleDateFormat("yyyy/MM/dd", Locale("fa"))
-                                Text(sdf.format(Date(inv.createdAt)), style = MaterialTheme.typography.bodySmall)
+                                Text(
+                                    com.talayeman.gold.util.JalaliCalendar.formatDate(inv.createdAt),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
                             }
                         }
                     }
