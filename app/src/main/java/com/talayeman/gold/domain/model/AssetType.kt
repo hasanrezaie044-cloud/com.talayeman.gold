@@ -17,10 +17,28 @@ enum class AssetType(val persianName: String, val isCoin: Boolean = false) {
     CUSTOM_COIN("سکه سفارشی", isCoin = true),
     OTHER("سایر");
 
+    /** Section used to group assets in the Assets tab. */
+    val category: AssetCategory
+        get() = when {
+            isCoin -> AssetCategory.COIN
+            this == OTHER -> AssetCategory.OTHER
+            else -> AssetCategory.GOLD
+        }
+
+    /** Gold sold by weight: the unit price is per GRAM. Coins / other items are priced per piece. */
+    val pricedPerGram: Boolean get() = category == AssetCategory.GOLD
+
     companion object {
         fun fromString(value: String): AssetType =
             entries.find { it.name == value } ?: OTHER
     }
+}
+
+/** Gold / Coin / Other: how the Assets tab separates asset types. */
+enum class AssetCategory(val persianName: String) {
+    GOLD("طلا"),
+    COIN("سکه"),
+    OTHER("سایر")
 }
 
 enum class WeightUnit(val persianName: String) {

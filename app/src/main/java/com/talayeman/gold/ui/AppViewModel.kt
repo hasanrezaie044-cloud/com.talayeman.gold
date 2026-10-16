@@ -12,6 +12,8 @@ import com.talayeman.gold.data.repository.SettingsRepository
 import com.talayeman.gold.domain.model.*
 import com.talayeman.gold.domain.usecase.PortfolioCalculator
 import com.talayeman.gold.util.AttachmentStorage
+import com.talayeman.gold.util.MarketClosedException
+import com.talayeman.gold.util.MarketHours
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -76,21 +78,39 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _refreshError = MutableStateFlow<String?>(null)
     val refreshError: StateFlow<String?> = _refreshError.asStateFlow()
 
-    init {
-        refreshPrices()
-    }
+    /** True while the Iranian market is open (11:00-18:00 Tehran time). Re-evaluated on demand. */
+    private val _marketOpen = MutableStateFlow(MarketHours.isOpen())
+    val marketOpen: StateFlow<Boolean> = _marketOpen.asStateFlow()
 
-    fun refreshPrices() {
+    // No refresh in init: MainActivity triggers the first (silent) refresh only after the Terms of
+    // Use were accepted. Pull-to-refresh buttons call refreshPrices() explicitly.
+
+    /**
+     * [userRequested] = the user tapped refresh. Outside market hours nothing is fetched and the
+     * message "بازار بسته است" is shown (only for a user request).
+     */
+    fun refreshPrices(userRequested: Boolean = true) {
         viewModelScope.launch {
-            _isRefreshing.value = true
+            _marketOpen.value = MarketHours.isOpen()
             _refreshError.value = null
+            if (!_marketOpen.value) {
+                if (userRequested) _refreshError.value = MarketHours.CLOSED_MESSAGE
+                return@launch
+            }
+            _isRefreshing.value = true
             val result = marketRepo.refreshPrices()
             if (result.isFailure) {
-                _refreshError.value = "خطا در دریافت قیمت. از آخرین قیمت ذخیره‌شده استفاده می‌شود."
+                _refreshError.value =
+                    if (result.exceptionOrNull() is MarketClosedException) MarketHours.CLOSED_MESSAGE
+                    else "خطا در دریافت قیمت. از آخرین قیمت ذخیره‌شده استفاده می‌شود."
             }
             _isRefreshing.value = false
         }
     }
+
+    /** Last-7-days price points for the weekly chart. */
+    fun weeklyHistory(type: PriceType): Flow<List<Pair<Long, java.math.BigDecimal>>> =
+        marketRepo.getWeeklyHistory(type)
 
     fun setTheme(mode: ThemeMode) {
         viewModelScope.launch { settingsRepo.setThemeMode(mode) }

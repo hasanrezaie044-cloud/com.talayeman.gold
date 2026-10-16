@@ -108,7 +108,10 @@ object NotificationHelper {
             post(
                 context, CHANNEL_PRICE, ID_DAILY,
                 title = "به‌روزرسانی بازار طلا",
-                text = "قیمت‌های جدید طلا و سکه دریافت شد. برای مشاهده جزئیات وارد برنامه شوید.",
+                text = if (com.talayeman.gold.util.MarketHours.isOpen())
+                    "قیمت‌های امروز طلا و سکه دریافت شد. برای مشاهده جزئیات وارد برنامه شوید."
+                else
+                    "بازار بسته است؛ آخرین قیمت‌های ذخیره‌شده در برنامه موجود است.",
                 genericText = "به‌روزرسانی قیمت طلا آماده است.",
                 showDetails = showFinance
             )

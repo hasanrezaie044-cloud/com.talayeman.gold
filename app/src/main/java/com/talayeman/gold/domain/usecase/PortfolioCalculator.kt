@@ -172,6 +172,44 @@ class PortfolioCalculator {
         )
     }
 
+    /** Market reference for the "unit price" field of the Add-Asset form. */
+    data class MarketUnitPrice(
+        /** Gold: price of ONE GRAM at the given purity. Coin: price of ONE coin. */
+        val price: BigDecimal,
+        val priceType: PriceType,
+        val isCached: Boolean,
+        val perCoin: Boolean
+    )
+
+    /**
+     * Today's market price used to pre-fill the unit price for any asset type (not only coins):
+     * - coins: per-coin quote (or gold-content value for Parsian / non-bank / custom coins),
+     * - gold: per-gram price scaled to the asset's purity (same rule as the portfolio valuation).
+     * Returns null for "other" assets or when no price is stored; then the price is typed manually.
+     */
+    fun marketUnitPrice(
+        type: AssetType,
+        purity: Int,
+        unitWeightMg: Long,
+        prices: Map<PriceType, MarketPrice>
+    ): MarketUnitPrice? {
+        if (type.isCoin) {
+            val a = autoCoinValue(type, 1, unitWeightMg, purity, prices) ?: return null
+            return MarketUnitPrice(a.total, a.priceType, a.isCached, perCoin = true)
+        }
+        if (!type.pricedPerGram || purity <= 0) return null
+        val basis = goldPriceBasis(purity, prices) ?: return null
+        if (basis.price.price.signum() <= 0) return null
+        val perGram = MoneyUtils.estimateGoldValue(
+            weightMg = 1000,
+            quantity = 1,
+            purity = purity,
+            pricePerGram18or24 = basis.price.price,
+            is24kPrice = basis.is24k
+        )
+        return MarketUnitPrice(perGram, basis.price.priceType, basis.price.isCached, perCoin = false)
+    }
+
     companion object {
         private val QUOTE_ONLY_COINS = setOf(
             AssetType.EMAMI,

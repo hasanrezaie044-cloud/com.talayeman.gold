@@ -1,3 +1,43 @@
+# Talaye Man – v1.3.1 (prices from TGJU)
+
+- `MarketPriceService` now reads TGJU (`call4`, `call5`, `call1`, `call` .tgju.org `/ajax.json`, `current.*.p`), tried in order,
+  no API key. Rial -> Toman (/10). Keys: geram18, geram24 (derived from 18K if missing), mesghal, gold_melted_wholesale,
+  sekee (Emami), sekeb (Bahar Azadi), nim, rob, gerami. Mithqal / melted values that are not ~4-5.5x the gram price are
+  rejected (unit mix-up guard) and derived from the 18K price instead.
+- The old GitHub JSON sources (Navasan / iran-market) were removed, so every stored price is really from TGJU.
+- Source line shown in the Market tab and on Home: "قیمت‌ها بر اساس اعلام اتحادیه طلا و جواهر تهران و منابع معتبر بازار (از جمله TGJU) نمایش داده می‌شود".
+- Market-hours gate (11:00-18:00 Tehran) is unchanged. New tests: `TgjuParserTest`.
+
+---
+
+# Talaye Man – v1.3.0
+
+1. **Add Asset – automatic price for ALL types** (`AssetEditScreen`, new `domain/usecase/PurchasePricing.kt`,
+   `PortfolioCalculator.marketUnitPrice`, `ui/components/PercentTextField.kt`).
+   Selecting any type pre-fills today's market unit price (gold: per gram at the asset's purity; coins: per coin;
+   "other": manual). Inputs: quantity / weight, unit price, making-charge % and tax % (both limited to 0-100),
+   optional fixed fees. Final price is recalculated live:
+   `total = base x (1 + (making% + tax%) / 100) (+ fees)` - e.g. 1 g x 25,000,000, 7 % + 5 % = 28,000,000.
+   The data model is unchanged: base -> purchasePrice, making/tax stored as amounts (tax derived from the exact total so
+   the parts always add up). Old assets are shown with unit price / percentages derived from their stored amounts.
+2. **Assets tab**: sections Gold / Coin / Other with chips, per-section totals (count, weight or quantity, cost, estimated
+   value, profit/loss) and a per-type breakdown.
+3. **Photos / gallery**: photo and invoice cards moved to the TOP of the form; new visible option
+   "ثبت عکس‌های دوربین در گالری گوشی" (checkbox = every camera shot is also saved to the gallery, plus a "save taken photos"
+   button). Gallery picker now falls back to the classic picker if the system photo picker is unavailable.
+4. **Market hours** (`util/MarketHours.kt`): prices are fetched only 11:00-18:00 Asia/Tehran. Outside: no request,
+   manual refresh shows "بازار بسته است", background worker/daily worker skip silently, Market tab shows a closed-market card.
+   The daily notification now runs at 12:00 and no longer claims "new prices" when the market is closed.
+5. **One-week chart** (`ui/components/WeeklyPriceChart.kt`, DAO `getHistorySince`): on Home and Reports; choose
+   Gold / Coin / Other and then the exact price type; Jalali weekday axis, change %, min / max.
+6. **Terms of Use gate** (`ui/terms`, `util/TermsManager.kt`): shown before everything, exact text, checkbox + accept
+   button, decline / Back closes the app, acceptance is persisted. Workers, permission prompt and the first price refresh
+   start only after acceptance.
+7. **Market tab notice** added (exact text).
+Version 1.3.0 (code 4). Tests: PurchasePricingTest, MarketHoursTest.
+
+---
+
 # Talaye Man – v1.2.0 (auth fix, Drive backup, sold/gifted, notifications, Jalali, new UI)
 
 ## 1. Authentication (was completely broken)

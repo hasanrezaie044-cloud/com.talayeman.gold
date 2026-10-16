@@ -6,12 +6,15 @@ import com.talayeman.gold.data.local.entity.PriceHistoryEntity
 import com.talayeman.gold.data.remote.MarketPriceService
 import com.talayeman.gold.domain.model.MarketPrice
 import com.talayeman.gold.domain.model.PriceType
+import com.talayeman.gold.util.MarketClosedException
+import com.talayeman.gold.util.MarketHours
 import com.talayeman.gold.util.MoneyUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import java.math.BigDecimal
 
 class MarketRepository(
     private val marketPriceDao: MarketPriceDao,
@@ -31,7 +34,21 @@ class MarketRepository(
     suspend fun getPrice(type: PriceType): MarketPrice? =
         marketPriceDao.getPrice(type.name)?.toDomain()
 
+    /** (time, price) points of the last 7 days for one price type, oldest first. */
+    fun getWeeklyHistory(type: PriceType): Flow<List<Pair<Long, BigDecimal>>> {
+        val since = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000
+        return marketPriceDao.getHistorySince(type.name, since).map { list ->
+            list.map { it.recordedAt to MoneyUtils.parse(it.price) }
+        }
+    }
+
+    /**
+     * Fetches live prices. Prices are only updated while the Iranian market is open
+     * (11:00-18:00 Tehran time); otherwise NO request is made and a [MarketClosedException]
+     * ("بازار بسته است") is returned - the stored prices stay unchanged.
+     */
     suspend fun refreshPrices(): Result<List<MarketPrice>> = withContext(Dispatchers.IO) {
+        if (!MarketHours.isOpen()) return@withContext Result.failure(MarketClosedException())
         try {
             val live = marketPriceService.fetchLivePrices()
             val entities = live.map { it.toEntity(isCached = false) }

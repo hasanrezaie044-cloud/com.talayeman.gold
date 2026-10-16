@@ -26,6 +26,8 @@ import com.talayeman.gold.ui.AppViewModel
 import com.talayeman.gold.ui.auth.LockScreen
 import com.talayeman.gold.ui.navigation.GoldNavGraph
 import com.talayeman.gold.ui.navigation.bottomNavItems
+import com.talayeman.gold.ui.terms.TermsOfUseScreen
+import com.talayeman.gold.util.TermsManager
 import com.talayeman.gold.ui.theme.GoldTheme
 import com.talayeman.gold.util.PinManager
 import com.talayeman.gold.worker.DailyPriceNotificationWorker
@@ -42,6 +44,9 @@ class MainActivity : FragmentActivity() {
     private var locked by mutableStateOf(false)
     private var stoppedAtElapsed = 0L
 
+    /** The Terms of Use must be accepted (once) before the app can be used. */
+    private var termsAccepted by mutableStateOf(false)
+
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { /* handled */ }
@@ -50,25 +55,25 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
 
         locked = PinManager.get(this).hasPin()
-
-        NotificationHelper.createChannels(this)
-        PriceUpdateWorker.enqueue(this)
-        DailyPriceNotificationWorker.schedule(this)
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED
-            ) {
-                requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
-        }
+        termsAccepted = TermsManager.isAccepted(this)
+        // Nothing runs (workers, permission prompts, network) until the Terms of Use are accepted.
+        if (termsAccepted) startApp()
 
         setContent {
             val themeMode by viewModel.themeMode.collectAsState()
 
             GoldTheme(themeMode = themeMode) {
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                    if (locked) {
+                    if (!termsAccepted) {
+                        TermsOfUseScreen(
+                            onAccept = {
+                                TermsManager.accept(this@MainActivity)
+                                termsAccepted = true
+                                startApp()
+                            },
+                            onDecline = { finishAffinity() }
+                        )
+                    } else if (locked) {
                         LockScreen(
                             activity = this@MainActivity,
                             onUnlocked = {
@@ -82,6 +87,23 @@ class MainActivity : FragmentActivity() {
                 }
             }
         }
+    }
+
+    /** Background work, notification permission and the first price refresh; runs once per launch. */
+    private fun startApp() {
+        NotificationHelper.createChannels(this)
+        PriceUpdateWorker.enqueue(this)
+        DailyPriceNotificationWorker.schedule(this)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+        // Silent outside market hours (11:00-18:00 Tehran); no error banner for an automatic refresh.
+        viewModel.refreshPrices(userRequested = false)
     }
 
     override fun onStop() {

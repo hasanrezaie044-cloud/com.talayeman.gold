@@ -7,6 +7,7 @@ import com.talayeman.gold.data.remote.MarketPriceService
 import com.talayeman.gold.data.repository.MarketRepository
 import com.talayeman.gold.data.repository.SettingsRepository
 import com.talayeman.gold.service.NotificationHelper
+import com.talayeman.gold.util.MarketClosedException
 import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
 
@@ -29,6 +30,9 @@ class PriceUpdateWorker(
                 // Price-update / profit / loss notifications (each can be disabled in Settings)
                 runCatching { NotificationHelper.handlePriceUpdate(applicationContext, db, previous) }
                 NotificationHelper.checkAndNotifyAlerts(applicationContext, db)
+                Result.success()
+            } else if (result.exceptionOrNull() is MarketClosedException) {
+                // Market closed: nothing to fetch, nothing to retry until the next period.
                 Result.success()
             } else {
                 Result.retry()

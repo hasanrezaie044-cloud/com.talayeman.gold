@@ -27,6 +27,7 @@ import com.talayeman.gold.ui.components.IconBadge
 import com.talayeman.gold.ui.components.PriceCard
 import com.talayeman.gold.ui.components.SectionTitle
 import com.talayeman.gold.ui.components.StatCard
+import com.talayeman.gold.ui.components.WeeklyPriceChartCard
 import com.talayeman.gold.ui.theme.GoldBright
 import com.talayeman.gold.ui.theme.GoldDeep
 import com.talayeman.gold.ui.theme.GoldMid
@@ -227,6 +228,11 @@ fun HomeScreen(
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     SectionTitle("قیمت بازار")
+                    Text(
+                        "قیمت‌ها بر اساس اعلام اتحادیه طلا و جواهر تهران و منابع معتبر بازار (از جمله TGJU) نمایش داده می‌شود",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     if (lastUpdate != null) {
                         Text(
                             "آخرین به‌روزرسانی: ${JalaliCalendar.formatDateTime(lastUpdate)}" +
@@ -249,6 +255,9 @@ fun HomeScreen(
                     PriceCard("امامی", priceMap[PriceType.EMAMI], currency, Modifier.weight(1f))
                 }
             }
+
+            // ---------- One-week price chart (select gold / coin / other) ----------
+            item { WeeklyPriceChartCard(viewModel, currency) }
 
             // ---------- Recent assets ----------
             item {

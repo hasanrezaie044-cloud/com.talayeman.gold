@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.talayeman.gold.ui.AppViewModel
+import com.talayeman.gold.ui.components.WeeklyPriceChartCard
 import com.talayeman.gold.ui.components.StatCard
 import com.talayeman.gold.util.MoneyUtils
 import com.talayeman.gold.util.WeightConverter
@@ -51,6 +52,8 @@ fun ReportsScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            WeeklyPriceChartCard(viewModel, currency)
+
             Text("خلاصه پورتفوی", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 
             StatCard("ارزش فعلی", MoneyUtils.format(portfolio.currentEstimatedValue, true, currency), Modifier.fillMaxWidth())

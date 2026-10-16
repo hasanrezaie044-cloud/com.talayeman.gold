@@ -267,7 +267,7 @@ fun SettingsScreen(
                 ) { setNotif(SettingsRepository.KEY_NOTIF_LOSS, it) }
                 SwitchRow(
                     "اعلان روزانه قیمت",
-                    "هر روز ساعت ۹ صبح",
+                    "هر روز ساعت ۱۲ (در ساعت کار بازار)",
                     notifDaily
                 ) { setNotif(SettingsRepository.KEY_DAILY_PRICE_NOTIF, it) }
                 SwitchRow(
