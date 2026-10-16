@@ -82,6 +82,7 @@ ksp {
 }
 
 dependencies {
+    implementation("com.google.errorprone:error_prone_annotations:2.36.0")
     // Core
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
