@@ -21,11 +21,14 @@ class PortfolioCalculator {
         var coinValue = BigDecimal.ZERO
         var totalGoldMg = 0L
         var coinCount = 0
+        var giftValue = BigDecimal.ZERO
 
         for (asset in assets) {
             totalPurchase = totalPurchase.add(asset.totalPurchaseCost)
             val current = estimateAssetValue(asset, prices)
             totalCurrent = totalCurrent.add(current)
+            // Gifts count in the portfolio value, but cost nothing, so they are not "profit".
+            if (asset.acquisition == AcquisitionType.GIFT_RECEIVED) giftValue = giftValue.add(current)
             if (asset.isCoin) {
                 coinValue = coinValue.add(current)
                 coinCount += asset.quantity
@@ -35,8 +38,11 @@ class PortfolioCalculator {
             }
         }
 
-        val pl = MoneyUtils.profitLoss(totalPurchase, totalCurrent)
-        val plPercent = MoneyUtils.profitLossPercent(totalPurchase, totalCurrent)
+        // Profit / loss is computed on purchased assets only: a gift has no cost basis, so counting it
+        // would show its whole value as profit. The gift value is reported separately (giftValue).
+        val valueOfPurchased = totalCurrent.subtract(giftValue)
+        val pl = MoneyUtils.profitLoss(totalPurchase, valueOfPurchased)
+        val plPercent = MoneyUtils.profitLossPercent(totalPurchase, valueOfPurchased)
 
         return PortfolioSummary(
             totalPurchaseCost = totalPurchase,
@@ -47,11 +53,35 @@ class PortfolioCalculator {
             totalCoinCount = coinCount,
             goldValue = goldValue,
             coinValue = coinValue,
-            assetCount = assets.size
+            assetCount = assets.size,
+            giftValue = giftValue
         )
     }
 
+    /** Melted gold per gram: the melted quote is per mithqal (4.608 g, 750 fineness). */
+    data class MeltedGram(val perGram: BigDecimal, val priceType: PriceType, val isCached: Boolean)
+
+    fun meltedGoldPerGram(prices: Map<PriceType, MarketPrice>): MeltedGram? {
+        for (t in listOf(PriceType.MELTED_GOLD, PriceType.MITHQAL)) {
+            val p = prices[t] ?: continue
+            if (p.price.signum() > 0) {
+                return MeltedGram(p.price.divide(MITHQAL_GRAMS, 2, RoundingMode.HALF_UP), t, p.isCached)
+            }
+        }
+        // No melted / mithqal quote: 18K gram price is the same 750 fineness.
+        val p18 = prices[PriceType.GOLD_18K]?.takeIf { it.price.signum() > 0 } ?: return null
+        return MeltedGram(p18.price, PriceType.GOLD_18K, p18.isCached)
+    }
+
+    /** Gold bank: grams x quantity x melted-gold price per gram. */
+    private fun estimateGoldBankValue(asset: Asset, prices: Map<PriceType, MarketPrice>): BigDecimal {
+        val melted = meltedGoldPerGram(prices) ?: return BigDecimal.ZERO
+        val grams = BigDecimal.valueOf(asset.weightMg).divide(BigDecimal(1000), 8, RoundingMode.HALF_UP)
+        return melted.perGram.multiply(grams).multiply(BigDecimal(asset.quantity)).setScale(0, RoundingMode.HALF_UP)
+    }
+
     fun estimateAssetValue(asset: Asset, prices: Map<PriceType, MarketPrice>): BigDecimal {
+        if (asset.type == AssetType.GOLD_BANK) return estimateGoldBankValue(asset, prices)
         return if (asset.isCoin) {
             estimateCoinValue(asset, prices)
         } else {
@@ -172,7 +202,52 @@ class PortfolioCalculator {
         )
     }
 
+    /** Market reference for the "unit price" field of the Add-Asset form. */
+    data class MarketUnitPrice(
+        /** Gold: price of ONE GRAM at the given purity. Coin: price of ONE coin. */
+        val price: BigDecimal,
+        val priceType: PriceType,
+        val isCached: Boolean,
+        val perCoin: Boolean
+    )
+
+    /**
+     * Today's market price used to pre-fill the unit price for any asset type (not only coins):
+     * - coins: per-coin quote (or gold-content value for Parsian / non-bank / custom coins),
+     * - gold: per-gram price scaled to the asset's purity (same rule as the portfolio valuation).
+     * Returns null for "other" assets or when no price is stored; then the price is typed manually.
+     */
+    fun marketUnitPrice(
+        type: AssetType,
+        purity: Int,
+        unitWeightMg: Long,
+        prices: Map<PriceType, MarketPrice>
+    ): MarketUnitPrice? {
+        if (type.isCoin) {
+            val a = autoCoinValue(type, 1, unitWeightMg, purity, prices) ?: return null
+            return MarketUnitPrice(a.total, a.priceType, a.isCached, perCoin = true)
+        }
+        if (type == AssetType.GOLD_BANK) {
+            val m = meltedGoldPerGram(prices) ?: return null
+            return MarketUnitPrice(m.perGram.setScale(0, RoundingMode.HALF_UP), m.priceType, m.isCached, perCoin = false)
+        }
+        if (!type.pricedPerGram || purity <= 0) return null
+        val basis = goldPriceBasis(purity, prices) ?: return null
+        if (basis.price.price.signum() <= 0) return null
+        val perGram = MoneyUtils.estimateGoldValue(
+            weightMg = 1000,
+            quantity = 1,
+            purity = purity,
+            pricePerGram18or24 = basis.price.price,
+            is24kPrice = basis.is24k
+        )
+        return MarketUnitPrice(perGram, basis.price.priceType, basis.price.isCached, perCoin = false)
+    }
+
     companion object {
+        /** One mithqal in grams (same constant as the weight converter). */
+        val MITHQAL_GRAMS: BigDecimal = BigDecimal("4.608")
+
         private val QUOTE_ONLY_COINS = setOf(
             AssetType.EMAMI,
             AssetType.BAHAR_AZADI,

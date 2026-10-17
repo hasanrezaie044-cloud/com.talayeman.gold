@@ -27,7 +27,22 @@ object GallerySaver {
     /** [source] is a [File] or a [Uri]. Returns true on success. */
     suspend fun save(context: Context, source: Any): Boolean = withContext(Dispatchers.IO) {
         try {
-            val name = "TalayeMan_${System.currentTimeMillis()}.jpg"
+            // Keep the real image format (stored photos are usually JPEG, but PNG / WebP are possible).
+            val mime = when (source) {
+                is File -> when (source.extension.lowercase()) {
+                    "png" -> "image/png"
+                    "webp" -> "image/webp"
+                    else -> "image/jpeg"
+                }
+                is Uri -> context.contentResolver.getType(source)?.takeIf { it.startsWith("image/") } ?: "image/jpeg"
+                else -> "image/jpeg"
+            }
+            val ext = when (mime) {
+                "image/png" -> "png"
+                "image/webp" -> "webp"
+                else -> "jpg"
+            }
+            val name = "TalayeMan_${System.currentTimeMillis()}_${(Math.random() * 1000).toInt()}.$ext"
             val input: InputStream = when (source) {
                 is File -> source.inputStream()
                 is Uri -> context.contentResolver.openInputStream(source) ?: return@withContext false
@@ -37,7 +52,7 @@ object GallerySaver {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     val values = ContentValues().apply {
                         put(MediaStore.Images.Media.DISPLAY_NAME, name)
-                        put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                        put(MediaStore.Images.Media.MIME_TYPE, mime)
                         put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/$ALBUM")
                         put(MediaStore.Images.Media.IS_PENDING, 1)
                     }
@@ -60,7 +75,7 @@ object GallerySaver {
                     if (!dir.exists() && !dir.mkdirs()) return@withContext false
                     val out = File(dir, name)
                     FileOutputStream(out).use { stream.copyTo(it) }
-                    MediaScannerConnection.scanFile(context, arrayOf(out.absolutePath), arrayOf("image/jpeg"), null)
+                    MediaScannerConnection.scanFile(context, arrayOf(out.absolutePath), arrayOf(mime), null)
                 }
             }
             true

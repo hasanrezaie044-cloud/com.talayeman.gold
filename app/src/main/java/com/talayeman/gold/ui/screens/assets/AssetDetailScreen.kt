@@ -17,6 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.talayeman.gold.domain.model.AcquisitionType
 import com.talayeman.gold.domain.model.Asset
 import com.talayeman.gold.domain.model.AssetStatus
 import com.talayeman.gold.domain.model.AttachmentType
@@ -66,28 +67,40 @@ fun AssetDetailScreen(
     val currentValue = asset?.takeIf { it.status == AssetStatus.ACTIVE }
         ?.let { calculator.estimateAssetValue(it, priceMap) }
 
-    // Optional "save to gallery" (only when the user taps the button)
+    // Optional "save to gallery": photos stay inside the app; the user can copy any of them
+    // (also old ones) to the phone gallery whenever he wants, by tapping a save button.
+    var pendingSaveModels by remember { mutableStateOf<List<Any>>(emptyList()) }
+    fun doSave(models: List<Any>) {
+        scope.launch {
+            var ok = 0
+            models.forEach { if (GallerySaver.save(context, it)) ok++ }
+            snackbar.showSnackbar(
+                when {
+                    ok == 0 -> "ذخیره در گالری ناموفق بود"
+                    ok == 1 -> "عکس در گالری ذخیره شد"
+                    else -> "${JalaliCalendar.toPersianDigits(ok.toString())} عکس در گالری ذخیره شد"
+                }
+            )
+        }
+    }
     val storagePermission = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
     ) { granted ->
-        val model = previewModel
-        if (granted && model != null) {
-            scope.launch {
-                val ok = GallerySaver.save(context, model)
-                snackbar.showSnackbar(if (ok) "عکس در گالری ذخیره شد" else "ذخیره در گالری ناموفق بود")
-            }
-        } else if (!granted) {
-            scope.launch { snackbar.showSnackbar("برای ذخیره در گالری، اجازه‌ی دسترسی لازم است") }
-        }
+        val models = pendingSaveModels
+        pendingSaveModels = emptyList()
+        if (granted && models.isNotEmpty()) doSave(models)
+        else if (!granted) scope.launch { snackbar.showSnackbar("برای ذخیره در گالری، اجازه‌ی دسترسی لازم است") }
     }
-    fun saveToGallery(model: Any) {
-        if (GallerySaver.needsLegacyPermission) {
+    fun saveToGallery(models: List<Any>) {
+        if (models.isEmpty()) return
+        if (GallerySaver.needsLegacyPermission &&
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            pendingSaveModels = models
             storagePermission.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
         } else {
-            scope.launch {
-                val ok = GallerySaver.save(context, model)
-                snackbar.showSnackbar(if (ok) "عکس در گالری ذخیره شد" else "ذخیره در گالری ناموفق بود")
-            }
+            doSave(models)
         }
     }
 
@@ -167,19 +180,27 @@ fun AssetDetailScreen(
                         DetailRow("مثقال", WeightConverter.format(a.weightMg, WeightUnit.MITHQAL))
                         DetailRow("عیار", JalaliCalendar.toPersianDigits(a.purity.toString()))
                         DetailRow("تاریخ ثبت در برنامه", JalaliCalendar.formatDateTime(a.createdAt))
+                        DetailRow("نحوه‌ی دریافت", a.acquisition.persianName)
                     }
                 }
 
                 AppCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("اطلاعات خرید", fontWeight = FontWeight.Bold)
-                        DetailRow("قیمت خرید", MoneyUtils.format(a.purchasePrice, true, currency))
-                        DetailRow("اجرت", MoneyUtils.format(a.makingCharge, true, currency))
-                        DetailRow("مالیات", MoneyUtils.format(a.tax, true, currency))
-                        DetailRow("سایر هزینه‌ها", MoneyUtils.format(a.otherFees, true, currency))
-                        DetailRow("جمع کل", MoneyUtils.format(a.totalPurchaseCost, true, currency))
-                        a.seller?.let { DetailRow("فروشنده", it) }
-                        DetailRow("تاریخ خرید", JalaliCalendar.formatDate(a.purchaseDate))
+                        if (a.acquisition == AcquisitionType.GIFT_RECEIVED) {
+                            Text("اطلاعات دریافت", fontWeight = FontWeight.Bold)
+                            DetailRow("مبلغ پرداخت‌شده", "هیچ (هدیه)")
+                            a.seller?.let { DetailRow("از طرف", it) }
+                            DetailRow("تاریخ دریافت", JalaliCalendar.formatDate(a.purchaseDate))
+                        } else {
+                            Text("اطلاعات خرید", fontWeight = FontWeight.Bold)
+                            DetailRow("قیمت خرید", MoneyUtils.format(a.purchasePrice, true, currency))
+                            DetailRow("اجرت", MoneyUtils.format(a.makingCharge, true, currency))
+                            DetailRow("مالیات", MoneyUtils.format(a.tax, true, currency))
+                            DetailRow("سایر هزینه‌ها", MoneyUtils.format(a.otherFees, true, currency))
+                            DetailRow("جمع کل", MoneyUtils.format(a.totalPurchaseCost, true, currency))
+                            a.seller?.let { DetailRow("فروشنده", it) }
+                            DetailRow("تاریخ خرید", JalaliCalendar.formatDate(a.purchaseDate))
+                        }
                     }
                 }
 
@@ -196,13 +217,21 @@ fun AssetDetailScreen(
                                 style = MaterialTheme.typography.headlineSmall,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
-                            val pl = currentValue.subtract(a.totalPurchaseCost)
-                            Text(
-                                if (pl >= BigDecimal.ZERO) "سود: ${MoneyUtils.format(pl)}"
-                                else "ضرر: ${MoneyUtils.format(pl.abs())}",
-                                fontWeight = FontWeight.Bold,
-                                color = if (pl >= BigDecimal.ZERO) profitColor() else lossColor()
-                            )
+                            if (a.acquisition == AcquisitionType.GIFT_RECEIVED) {
+                                Text(
+                                    "هدیه‌ی دریافتی؛ در پورتفوی حساب می‌شود ولی سود و زیانی برایش محاسبه نمی‌شود.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            } else {
+                                val pl = currentValue.subtract(a.totalPurchaseCost)
+                                Text(
+                                    if (pl >= BigDecimal.ZERO) "سود: ${MoneyUtils.format(pl)}"
+                                    else "ضرر: ${MoneyUtils.format(pl.abs())}",
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (pl >= BigDecimal.ZERO) profitColor() else lossColor()
+                                )
+                            }
                         }
                     }
                 }
@@ -229,9 +258,20 @@ fun AssetDetailScreen(
                                         AttachmentThumbnail(
                                             model = file,
                                             contentDescription = att.fileName,
-                                            onClick = { previewModel = file }
+                                            onClick = { previewModel = file },
+                                            onSaveToGallery = { saveToGallery(listOf(file)) }
                                         )
                                     }
+                                }
+                                OutlinedButton(
+                                    onClick = {
+                                        saveToGallery(items.map { AttachmentStorage.resolve(context, it.filePath) })
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Default.SaveAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("ذخیره‌ی همه‌ی «$title» در گالری گوشی")
                                 }
                             }
                         }
@@ -254,7 +294,7 @@ fun AssetDetailScreen(
         ImagePreviewDialog(
             model = model,
             onDismiss = { previewModel = null },
-            onSaveToGallery = { saveToGallery(model) }
+            onSaveToGallery = { saveToGallery(listOf(model)) }
         )
     }
 

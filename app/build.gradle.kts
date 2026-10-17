@@ -13,8 +13,8 @@ android {
         applicationId = "com.talayeman.gold"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = 6
+        versionName = "1.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -135,9 +135,6 @@ dependencies {
 
     // Persian date (Jalali)
     implementation("com.github.samanzamani:PersianDate:1.7.1")
-
-    // Required annotations referenced by Google Tink during R8 minification
-    implementation("com.google.errorprone:error_prone_annotations:2.36.0")
 
     // Security / Encrypted prefs fallback
     implementation("androidx.security:security-crypto:1.1.0-alpha06")

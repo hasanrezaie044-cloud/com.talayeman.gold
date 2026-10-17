@@ -36,5 +36,7 @@ data class AssetEntity(
     val status: String = "ACTIVE", // AssetStatus enum name
     val statusDate: Long? = null,
     val soldPrice: String? = null, // BigDecimal as string
-    val statusNote: String? = null
+    val statusNote: String? = null,
+    // --- added in DB version 3 ---
+    val acquisition: String = "PURCHASED" // AcquisitionType enum name
 )

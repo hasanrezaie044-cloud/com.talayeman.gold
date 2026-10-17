@@ -20,7 +20,7 @@ import com.talayeman.gold.data.local.entity.*
         PriceAlertEntity::class,
         AppSettingsEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -44,6 +44,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v2 -> v3: how the asset was acquired (purchased / received as a gift). Existing rows = PURCHASED. */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE assets ADD COLUMN acquisition TEXT NOT NULL DEFAULT 'PURCHASED'")
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -55,7 +62,7 @@ abstract class AppDatabase : RoomDatabase() {
                     DB_NAME
                 )
                     // Never wipe user data silently: every schema change needs a Migration.
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                     .also { INSTANCE = it }
             }

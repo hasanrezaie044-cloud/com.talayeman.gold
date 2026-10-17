@@ -50,7 +50,7 @@ class BackupManager(private val context: Context) {
                 }
                 // Metadata
                 val meta = JSONObject().apply {
-                    put("version", 2) // DB schema version contained in this backup
+                    put("version", 3) // DB schema version contained in this backup
                     put("appId", "com.talayeman.gold")
                     put("createdAt", System.currentTimeMillis())
                 }

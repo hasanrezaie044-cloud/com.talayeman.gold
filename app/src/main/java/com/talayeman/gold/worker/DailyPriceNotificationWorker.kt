@@ -21,7 +21,7 @@ class DailyPriceNotificationWorker(
         val enabled = settingsRepo.get(SettingsRepository.KEY_DAILY_PRICE_NOTIF) != "false"
         if (!enabled) return Result.success()
 
-        // Try refresh first
+        // Try refresh first (silently skipped by the repository when the market is closed)
         val marketRepo = MarketRepository(db.marketPriceDao(), MarketPriceService())
         marketRepo.refreshPrices()
 
@@ -32,7 +32,8 @@ class DailyPriceNotificationWorker(
     companion object {
         const val WORK_NAME = "daily_price_notification"
 
-        fun schedule(context: Context, hour: Int = 9, minute: Int = 0) {
+        /** Default 12:00 so the refresh happens inside the market hours (11:00-18:00). */
+        fun schedule(context: Context, hour: Int = 12, minute: Int = 0) {
             val now = Calendar.getInstance()
             val target = Calendar.getInstance().apply {
                 set(Calendar.HOUR_OF_DAY, hour)

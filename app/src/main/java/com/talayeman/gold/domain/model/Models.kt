@@ -14,6 +14,17 @@ enum class AssetStatus(val persianName: String) {
     }
 }
 
+/** How the asset came to the user: bought (price paid) or received as a gift (nothing paid). */
+enum class AcquisitionType(val persianName: String) {
+    PURCHASED("خریداری‌شده"),
+    GIFT_RECEIVED("هدیه گرفته‌ام");
+
+    companion object {
+        fun fromString(value: String?): AcquisitionType =
+            entries.firstOrNull { it.name == value } ?: PURCHASED
+    }
+}
+
 data class Asset(
     val id: Long = 0,
     val name: String,
@@ -40,6 +51,8 @@ data class Asset(
     val soldPrice: BigDecimal? = null,
     /** Free text: buyer / recipient / reason. */
     val statusNote: String? = null,
+    /** PURCHASED or GIFT_RECEIVED. A gift costs nothing but still counts in the portfolio and can be sold. */
+    val acquisition: AcquisitionType = AcquisitionType.PURCHASED,
     val photos: List<Attachment> = emptyList(),
     val invoices: List<Attachment> = emptyList()
 )
@@ -58,6 +71,7 @@ data class Attachment(
 enum class AttachmentType { PHOTO, INVOICE }
 
 val Asset.isActive: Boolean get() = status == AssetStatus.ACTIVE
+val Asset.isGiftReceived: Boolean get() = acquisition == AcquisitionType.GIFT_RECEIVED
 
 data class MarketPrice(
     val priceType: PriceType,
@@ -77,7 +91,9 @@ data class PortfolioSummary(
     val totalCoinCount: Int = 0,
     val goldValue: BigDecimal = BigDecimal.ZERO,
     val coinValue: BigDecimal = BigDecimal.ZERO,
-    val assetCount: Int = 0
+    val assetCount: Int = 0,
+    /** Current value of assets that were received as gifts (included in [currentEstimatedValue]). */
+    val giftValue: BigDecimal = BigDecimal.ZERO
 )
 
 data class PriceAlert(

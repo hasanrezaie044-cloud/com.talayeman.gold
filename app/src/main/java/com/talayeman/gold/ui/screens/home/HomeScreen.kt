@@ -27,6 +27,7 @@ import com.talayeman.gold.ui.components.IconBadge
 import com.talayeman.gold.ui.components.PriceCard
 import com.talayeman.gold.ui.components.SectionTitle
 import com.talayeman.gold.ui.components.StatCard
+import com.talayeman.gold.ui.components.PriceHistoryChartCard
 import com.talayeman.gold.ui.theme.GoldBright
 import com.talayeman.gold.ui.theme.GoldDeep
 import com.talayeman.gold.ui.theme.GoldMid
@@ -178,6 +179,13 @@ fun HomeScreen(
                                 )
                             }
                         }
+                        if (portfolio.giftValue.signum() > 0) {
+                            Text(
+                                "شامل ${MoneyUtils.format(portfolio.giftValue)} ارزش هدیه‌های دریافتی (بدون هزینه؛ در سود و زیان حساب نمی‌شود)",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = GoldBright
+                            )
+                        }
                         Text(
                             "ارزش تخمینی بازار است؛ قیمت واقعی خرید و فروش ممکن است متفاوت باشد. " +
                                 "دارایی‌های فروخته یا هدیه‌شده در این مبلغ حساب نمی‌شوند.",
@@ -227,6 +235,11 @@ fun HomeScreen(
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     SectionTitle("قیمت بازار")
+                    Text(
+                        "قیمت‌ها بر اساس اعلام اتحادیه طلا و جواهر تهران و منابع معتبر بازار (از جمله TGJU) نمایش داده می‌شود",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     if (lastUpdate != null) {
                         Text(
                             "آخرین به‌روزرسانی: ${JalaliCalendar.formatDateTime(lastUpdate)}" +
@@ -249,6 +262,9 @@ fun HomeScreen(
                     PriceCard("امامی", priceMap[PriceType.EMAMI], currency, Modifier.weight(1f))
                 }
             }
+
+            // ---------- One-week price chart (select gold / coin / other) ----------
+            item { PriceHistoryChartCard(viewModel, currency) }
 
             // ---------- Recent assets ----------
             item {

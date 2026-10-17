@@ -29,6 +29,13 @@ interface MarketPriceDao {
     @Query("SELECT * FROM price_history WHERE priceType = :type ORDER BY recordedAt DESC LIMIT :limit")
     fun getHistory(type: String, limit: Int = 100): Flow<List<PriceHistoryEntity>>
 
+    /** History of one price since [since] (epoch millis), oldest first - used by the weekly chart. */
+    @Query("SELECT * FROM price_history WHERE priceType = :type AND recordedAt >= :since ORDER BY recordedAt ASC")
+    fun getHistorySince(type: String, since: Long): Flow<List<PriceHistoryEntity>>
+
+    @Query("SELECT * FROM price_history WHERE priceType = :type AND recordedAt >= :since")
+    suspend fun getHistoryListSince(type: String, since: Long): List<PriceHistoryEntity>
+
     @Insert
     suspend fun insertHistory(entry: PriceHistoryEntity)
 

@@ -86,7 +86,8 @@ class AssetRepository(
         status = AssetStatus.fromString(status),
         statusDate = statusDate,
         soldPrice = soldPrice?.let { MoneyUtils.parse(it) },
-        statusNote = statusNote
+        statusNote = statusNote,
+        acquisition = AcquisitionType.fromString(acquisition)
     )
 
     private fun Asset.toEntity() = AssetEntity(
@@ -111,7 +112,8 @@ class AssetRepository(
         status = status.name,
         statusDate = statusDate,
         soldPrice = soldPrice?.toPlainString(),
-        statusNote = statusNote
+        statusNote = statusNote,
+        acquisition = acquisition.name
     )
 
     private fun AttachmentEntity.toDomain() = Attachment(
