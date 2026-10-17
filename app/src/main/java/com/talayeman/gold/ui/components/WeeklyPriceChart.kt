@@ -35,7 +35,7 @@ private const val DAY_MS = 24L * 60 * 60 * 1000
 private const val WEEK_MS = 7 * DAY_MS
 
 /** What the user can choose to chart: gold, coins, or the remaining price types. */
-private enum class ChartCategory(val persianName: String, val types: List<PriceType>) {
+private enum class WeeklyChartCategory(val persianName: String, val types: List<PriceType>) {
     GOLD("طلا", listOf(PriceType.GOLD_18K, PriceType.GOLD_24K)),
     COIN(
         "سکه",
@@ -58,12 +58,12 @@ fun WeeklyPriceChartCard(
     currency: Currency,
     modifier: Modifier = Modifier
 ) {
-    var categoryName by rememberSaveable { mutableStateOf(ChartCategory.GOLD.name) }
+    var categoryName by rememberSaveable { mutableStateOf(WeeklyChartCategory.GOLD.name) }
     var typeName by rememberSaveable { mutableStateOf(PriceType.GOLD_18K.name) }
-    val category = ChartCategory.valueOf(categoryName)
+    val category = WeeklyChartCategory.valueOf(categoryName)
     val type = PriceType.fromString(typeName).takeIf { it in category.types } ?: category.types.first()
 
-    val historyFlow = remember(type) { viewModel.weeklyHistory(type) }
+    val historyFlow = remember(type) { viewModel.priceHistory(type, 7) }
     val points by historyFlow.collectAsState(initial = emptyList())
 
     AppCard(modifier.fillMaxWidth()) {
@@ -72,7 +72,7 @@ fun WeeklyPriceChartCard(
 
             // 1) what to show: gold / coin / other
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ChartCategory.entries.forEach { c ->
+                WeeklyChartCategory.entries.forEach { c ->
                     FilterChip(
                         selected = category == c,
                         onClick = {
